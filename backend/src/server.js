@@ -8,24 +8,37 @@ import leaderboardRouter from "./routes/leaderboard.js";
 import { authMiddleware } from "./middleware/auth.js";
 
 const app = express();
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 
-app.use(cors());
+// ─── Middleware ───────────────────────────────────────────────────────────────
+app.use(cors({
+  origin: ["http://localhost:5173", "http://localhost:5174", "http://localhost:5175"],
+  credentials: true
+}));
 app.use(express.json());
 
-app.get("/", (req, res) => {
-  res.json({ message: "Backend de Quiniela funcionando 🚀" });
-});
+// ─── Public routes ────────────────────────────────────────────────────────────
+app.get("/", (req, res) => res.json({ message: "Backend Quiniela Mundial 2026 🚀" }));
+app.get("/api/health", (req, res) => res.json({ status: "ok", uptime: process.uptime() }));
 
-// Public routes
 app.use("/auth", authRouter);
+app.use("/leaderboard", leaderboardRouter);    // público: cualquiera puede ver la tabla
+app.use("/matches", matchesRouter);            // público: ver partidos sin token
 
-// Protected routes
+// ─── Protected routes ─────────────────────────────────────────────────────────
 app.use("/players", authMiddleware, playersRouter);
 app.use("/players", authMiddleware, predictionsRouter);
-app.use("/matches", authMiddleware, matchesRouter);
-app.use("/leaderboard", leaderboardRouter);
+
+// ─── 404 handler ─────────────────────────────────────────────────────────────
+app.use((req, res) => res.status(404).json({ error: `Route ${req.method} ${req.path} not found` }));
+
+// ─── Error handler ────────────────────────────────────────────────────────────
+app.use((err, req, res, _next) => {
+  console.error("Unhandled error:", err);
+  res.status(500).json({ error: "Internal server error" });
+});
 
 app.listen(PORT, () => {
-  console.log(`Servidor corriendo en http://localhost:${PORT}`);
+  console.log(`\n🚀 Servidor corriendo en http://localhost:${PORT}`);
+  console.log(`📁 Datos persistidos en backend/data/store.json\n`);
 });

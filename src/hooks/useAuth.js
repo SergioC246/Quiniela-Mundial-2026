@@ -6,24 +6,36 @@ const USER_KEY = "mundial_2026_user";
 export const useAuth = () => {
   const [token, setToken] = useState(() => localStorage.getItem(AUTH_TOKEN_KEY));
   const [user, setUser] = useState(() => {
-    const stored = localStorage.getItem(USER_KEY);
-    return stored ? JSON.parse(stored) : null;
+    try {
+      const stored = localStorage.getItem(USER_KEY);
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  const _saveSession = (data) => {
+    // ✅ FIX: el backend devuelve `accessToken`, no `token`
+    const accessToken = data.accessToken || data.token;
+    if (!accessToken) throw new Error("El servidor no devolvió un token válido");
+
+    localStorage.setItem(AUTH_TOKEN_KEY, accessToken);
+    localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+    setToken(accessToken);
+    setUser(data.user);
+    return data;
+  };
 
   const login = async (email, password, apiService) => {
     setLoading(true);
     setError(null);
     try {
       const data = await apiService.login(email, password);
-      localStorage.setItem(AUTH_TOKEN_KEY, data.token);
-      localStorage.setItem(USER_KEY, JSON.stringify(data.user));
-      setToken(data.token);
-      setUser(data.user);
-      return data;
+      return _saveSession(data);
     } catch (err) {
-      const msg = err.message || "Login failed";
+      const msg = err.message || "Error al iniciar sesión";
       setError(msg);
       throw err;
     } finally {
@@ -36,13 +48,9 @@ export const useAuth = () => {
     setError(null);
     try {
       const data = await apiService.register(name, email, password);
-      localStorage.setItem(AUTH_TOKEN_KEY, data.token);
-      localStorage.setItem(USER_KEY, JSON.stringify(data.user));
-      setToken(data.token);
-      setUser(data.user);
-      return data;
+      return _saveSession(data);
     } catch (err) {
-      const msg = err.message || "Registration failed";
+      const msg = err.message || "Error al registrarse";
       setError(msg);
       throw err;
     } finally {
@@ -66,6 +74,6 @@ export const useAuth = () => {
     login,
     register,
     logout,
-    isAuthenticated: !!token
+    isAuthenticated: !!token,
   };
 };
