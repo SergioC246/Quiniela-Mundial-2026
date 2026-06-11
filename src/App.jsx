@@ -1,32 +1,22 @@
-import { useState, useEffect } from 'react';
-import { TranslationProvider } from './hooks/TranslationProvider';
-import { useTranslation } from './hooks/useTranslation';
-import { useLocalStorage } from './hooks/useLocalStorage';
-import { matches } from './constants/matches';
-import { storageService } from './services/storageService';
-import { fetchResultsForMatches, normalize } from './services/espnApi';
+import { useState, useEffect } from "react";
+import { TranslationProvider } from "./hooks/TranslationProvider";
+import { useTranslation } from "./hooks/useTranslation";
+import { useLocalStorage } from "./hooks/useLocalStorage";
+import { matches } from "./constants/matches";
+import { storageService } from "./services/storageService";
+import { fetchResultsForMatches, normalize } from "./services/espnApi";
 
-import StatusPills from './components/StatusPills';
-import MatchList from './components/MatchList';
-import MatchCard from './components/MatchCard';
-import Leaderboard from './components/Leaderboard';
-import AdminPanel from './components/AdminPanel';
+import StatusPills from "./components/StatusPills";
+import MatchList from "./components/MatchList";
+import MatchCard from "./components/MatchCard";
+import Leaderboard from "./components/Leaderboard";
+import AdminPanel from "./components/AdminPanel";
 
 const APP_KEY = "mundial_2026_quiniela_shared_v1";
 const PLAYER_SESSION_KEY = "mundial_2026_player_session";
 
 function emailKey(email) {
   return normalize(email).slice(0, 160);
-}
-
-function pinHash(email, pin) {
-  let hash = 2166136261;
-  const value = `${email}|${pin}`;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0).toString(36);
 }
 
 function validEmail(email) {
@@ -40,22 +30,27 @@ function AppContent() {
   const [state, setState] = useState({
     players: {},
     results: {},
-    updatedAt: new Date().toISOString()
+    updatedAt: new Date().toISOString(),
   });
 
   const [storageMode, setStorageMode] = useState("checking");
   const [currentTab, setCurrentTab] = useState("picks"); // 'picks' | 'results'
-  const [theme, setTheme] = useState(() => localStorage.getItem("quiniela_theme") || "light");
+  const [theme, setTheme] = useState(
+    () => localStorage.getItem("quiniela_theme") || "light",
+  );
 
   // Admin session state
   const [adminLoggedIn, setAdminLoggedIn] = useState(
-    () => sessionStorage.getItem("mundial_2026_admin_session") === "true"
+    () => sessionStorage.getItem("mundial_2026_admin_session") === "true",
   );
   const [adminPanelOpen, setAdminPanelOpen] = useState(false);
   const [adminModalOpen, setAdminModalOpen] = useState(false);
 
   // Active Player session
-  const [currentPlayer, setCurrentPlayer] = useLocalStorage(PLAYER_SESSION_KEY, null);
+  const [currentPlayer, setCurrentPlayer] = useLocalStorage(
+    PLAYER_SESSION_KEY,
+    null,
+  );
 
   // Player picks state for form edits
   const [playerPicks, setPlayerPicks] = useState({});
@@ -74,24 +69,17 @@ function AppContent() {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
 
-  // Auto-fill player data when typing an existing email
-  useEffect(() => {
-    const email = formValues.email.trim().toLowerCase();
-    if (validEmail(email)) {
-      const key = emailKey(email);
-      const existingPlayer = state.players[key];
-      if (existingPlayer && !currentPlayer) {
-        setFormValues((prev) => ({ ...prev, name: existingPlayer.name }));
-        setPlayerPicks(existingPlayer.picks || {});
-      }
-    }
-  }, [formValues.email, state.players, currentPlayer]);
+
 
   // Load initial state
   useEffect(() => {
     async function loadInitialState() {
       const raw = await storageService.get(APP_KEY);
-      let loadedState = { players: {}, results: {}, updatedAt: new Date().toISOString() };
+      let loadedState = {
+        players: {},
+        results: {},
+        updatedAt: new Date().toISOString(),
+      };
       if (raw) {
         try {
           loadedState = { ...loadedState, ...JSON.parse(raw) };
@@ -99,7 +87,10 @@ function AppContent() {
           console.warn("Stored data could not be parsed", error);
         }
       }
-      const mode = await storageService.set(APP_KEY, JSON.stringify(loadedState));
+      const mode = await storageService.set(
+        APP_KEY,
+        JSON.stringify(loadedState),
+      );
       setState(loadedState);
       setStorageMode(mode);
     }
@@ -114,7 +105,10 @@ function AppContent() {
         try {
           const incoming = JSON.parse(raw);
           setState((current) => {
-            if (incoming.updatedAt && incoming.updatedAt !== current.updatedAt) {
+            if (
+              incoming.updatedAt &&
+              incoming.updatedAt !== current.updatedAt
+            ) {
               return { ...current, ...incoming };
             }
             return current;
@@ -129,9 +123,10 @@ function AppContent() {
 
   // Sync player picks when player session or global players state changes
   useEffect(() => {
-    const picks = (currentPlayer?.id && state.players[currentPlayer.id])
-      ? state.players[currentPlayer.id].picks || {}
-      : {};
+    const picks =
+      currentPlayer?.id && state.players[currentPlayer.id]
+        ? state.players[currentPlayer.id].picks || {}
+        : {};
     const timer = setTimeout(() => {
       setPlayerPicks(picks);
     }, 0);
@@ -160,7 +155,7 @@ function AppContent() {
   const handlePickChange = (matchId, newPick) => {
     setPlayerPicks((prev) => ({
       ...prev,
-      [matchId]: newPick
+      [matchId]: newPick,
     }));
   };
 
@@ -200,7 +195,7 @@ function AppContent() {
         completedPicks[match.id] = {
           mode: p.mode,
           homeScore: Number(p.homeScore),
-          awayScore: Number(p.awayScore)
+          awayScore: Number(p.awayScore),
         };
       }
     }
@@ -217,14 +212,14 @@ function AppContent() {
         email: targetEmail,
         picks: completedPicks,
         joinedAt: state.players[key]?.joinedAt || new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      }
+        updatedAt: new Date().toISOString(),
+      },
     };
 
     const newState = {
       ...state,
       players: updatedPlayers,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
     };
 
     setState(newState);
@@ -232,7 +227,7 @@ function AppContent() {
     setCurrentPlayer({
       id: key,
       name: targetName,
-      email: targetEmail
+      email: targetEmail,
     });
 
     const mode = await storageService.set(APP_KEY, JSON.stringify(newState));
@@ -243,15 +238,16 @@ function AppContent() {
   const handleFetchApiResults = async () => {
     setApiMsg({ text: t("apiLoading"), type: "" });
     try {
-      const { results: newResults, updatedCount } = await fetchResultsForMatches(matches);
+      const { results: newResults, updatedCount } =
+        await fetchResultsForMatches(matches);
 
       const newState = {
         ...state,
         results: {
           ...state.results,
-          ...newResults
+          ...newResults,
         },
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
       };
 
       setState(newState);
@@ -260,7 +256,7 @@ function AppContent() {
 
       setApiMsg({
         text: updatedCount ? t("apiDone") : t("apiNone"),
-        type: updatedCount ? "ok" : ""
+        type: updatedCount ? "ok" : "",
       });
     } catch (error) {
       console.error(error);
@@ -272,7 +268,7 @@ function AppContent() {
     const newState = {
       ...state,
       results: updatedResults,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
     };
     setState(newState);
     const mode = await storageService.set(APP_KEY, JSON.stringify(newState));
@@ -285,7 +281,7 @@ function AppContent() {
     const newState = {
       players: {},
       results: {},
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
     };
     setState(newState);
     const mode = await storageService.set(APP_KEY, JSON.stringify(newState));
@@ -298,20 +294,37 @@ function AppContent() {
       <section className="hero">
         <div className="topbar">
           <div className="brand">
-            <div className="logo" aria-hidden="true"><span></span></div>
+            <div className="logo" aria-hidden="true">
+              <span></span>
+            </div>
             <div className="brand-text">
               <strong>Mundial 2026</strong>
               <small>{t("brandSub")}</small>
             </div>
           </div>
           <div className="controls">
-            <button className="icon-btn" id="langBtn" type="button" onClick={toggleLang}>
+            <button
+              className="icon-btn"
+              id="langBtn"
+              type="button"
+              onClick={toggleLang}
+            >
               {lang.toUpperCase()}
             </button>
-            <button className="icon-btn" id="themeBtn" type="button" onClick={handleToggleTheme}>
+            <button
+              className="icon-btn"
+              id="themeBtn"
+              type="button"
+              onClick={handleToggleTheme}
+            >
               {theme === "dark" ? t("themeLight") : t("themeBtn")}
             </button>
-            <button className="icon-btn" id="adminBtn" type="button" onClick={handleAdminBtnClick}>
+            <button
+              className="icon-btn"
+              id="adminBtn"
+              type="button"
+              onClick={handleAdminBtnClick}
+            >
               {t("adminBtn")}
             </button>
           </div>
@@ -321,7 +334,10 @@ function AppContent() {
           <h1>{t("title")}</h1>
           <p className="hero-copy">{t("heroCopy")}</p>
           {adminLoggedIn && (
-            <StatusPills storageMode={storageMode} apiStatusText={t("apiReady")} />
+            <StatusPills
+              storageMode={storageMode}
+              apiStatusText={t("apiReady")}
+            />
           )}
         </div>
       </section>
@@ -335,25 +351,25 @@ function AppContent() {
             </div>
             <div className="tabs" role="tablist" aria-label="Prediction mode">
               <button
-                className={`tab-btn ${currentTab === 'picks' ? 'active' : ''}`}
+                className={`tab-btn ${currentTab === "picks" ? "active" : ""}`}
                 id="viewPicks"
                 type="button"
-                onClick={() => setCurrentTab('picks')}
+                onClick={() => setCurrentTab("picks")}
               >
                 {t("tabPicks")}
               </button>
               <button
-                className={`tab-btn ${currentTab === 'results' ? 'active' : ''}`}
+                className={`tab-btn ${currentTab === "results" ? "active" : ""}`}
                 id="viewResults"
                 type="button"
-                onClick={() => setCurrentTab('results')}
+                onClick={() => setCurrentTab("results")}
               >
                 {t("tabResults")}
               </button>
             </div>
           </div>
 
-          {currentTab === 'picks' ? (
+          {currentTab === "picks" ? (
             <MatchList
               matches={matches}
               results={state.results}
@@ -399,7 +415,11 @@ function AppContent() {
           />
         </div>
 
-        <Leaderboard players={state.players} matches={matches} results={state.results} />
+        <Leaderboard
+          players={state.players}
+          matches={matches}
+          results={state.results}
+        />
       </section>
     </main>
   );

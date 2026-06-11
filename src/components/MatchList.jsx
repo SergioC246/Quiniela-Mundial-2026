@@ -1,6 +1,6 @@
-import { useTranslation } from '../hooks/useTranslation';
-import PlayerAuth from './PlayerAuth';
-import MatchCard from './MatchCard';
+import { useTranslation } from "../hooks/useTranslation";
+import PlayerAuth from "./PlayerAuth";
+import MatchCard from "./MatchCard";
 
 export default function MatchList({
   matches,
@@ -8,11 +8,11 @@ export default function MatchList({
   picks,
   onChangePick,
   currentPlayer,
-  formValues,
-  setFormValues,
+  formValues,  
   onLogout,
+  setFormValues,
   onSubmitPicks,
-  formMsg
+  formMsg,
 }) {
   const { t } = useTranslation();
 
@@ -24,8 +24,8 @@ export default function MatchList({
         setFormValues={setFormValues}
         onLogout={onLogout}
       />
-      
-      <div className="match-list" id="matchList" style={{ marginTop: '16px' }}>
+
+      <div className="match-list" id="matchList" style={{ marginTop: "16px" }}>
         {matches.map((match) => (
           <MatchCard
             key={match.id}
@@ -48,7 +48,10 @@ export default function MatchList({
           {t("submitBtn")}
         </button>
         {formMsg?.text && (
-          <span className={`msg ${formMsg.type === 'ok' ? 'ok' : 'err'}`} id="formMsg">
+          <span
+            className={`msg ${formMsg.type === "ok" ? "ok" : "err"}`}
+            id="formMsg"
+          >
             {formMsg.text}
           </span>
         )}
