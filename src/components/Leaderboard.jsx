@@ -28,27 +28,28 @@ function pointsForPick(match, pick, results) {
   return { points: scorePredictionWinner(pick) === actualWinner ? 3 : 0, exact: false };
 }
 
-export default function Leaderboard({ players, matches, results }) {
-  const { t, lang } = useTranslation();
+export default function Leaderboard({ leaderboard = [], players, matches, results }) {
+  const { t } = useTranslation();
 
-  // Compute standings
-  const playerList = Object.values(players || {});
-  const standings = playerList.map((player) => {
-    const score = matches.reduce((acc, match) => {
-      const pickScore = pointsForPick(match, player.picks?.[match.id], results);
-      acc.points += pickScore.points;
-      acc.exacts += pickScore.exact ? 1 : 0;
-      return acc;
-    }, { points: 0, exacts: 0 });
-    return { ...player, ...score };
-  }).sort((a, b) => 
-    b.points - a.points || 
-    b.exacts - a.exacts || 
-    new Date(a.joinedAt) - new Date(b.joinedAt)
-  );
+  // Use API leaderboard if available
+  const standings = leaderboard.length > 0
+    ? leaderboard
+    : Object.values(players || {}).map((player) => {
+        const score = matches.reduce((acc, match) => {
+          const pickScore = pointsForPick(match, player.picks?.[match.id], results);
+          acc.points += pickScore.points;
+          acc.exacts += pickScore.exact ? 1 : 0;
+          return acc;
+        }, { points: 0, exacts: 0 });
+        return { ...player, ...score };
+      }).sort((a, b) =>
+        b.points - a.points ||
+        b.exacts - a.exacts ||
+        new Date(a.joinedAt) - new Date(b.joinedAt)
+      );
 
   // Compute joined people sorted by joinedAt descending
-  const joinedPeople = [...playerList].sort((a, b) => 
+  const joinedPeople = [...Object.values(players || {})].sort((a, b) =>
     new Date(b.joinedAt) - new Date(a.joinedAt)
   );
 

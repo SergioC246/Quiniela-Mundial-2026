@@ -1,30 +1,21 @@
 import { useState, useEffect } from "react";
 import { TranslationProvider } from "./hooks/TranslationProvider";
 import { useTranslation } from "./hooks/useTranslation";
-import { useLocalStorage } from "./hooks/useLocalStorage";
+import { useAuth } from "./hooks/useAuth";
 import { matches } from "./constants/matches";
-import { storageService } from "./services/storageService";
-import { fetchResultsForMatches, normalize } from "./services/espnApi";
+import { fetchResultsForMatches } from "./services/espnApi";
+import { apiService } from "./services/apiServices";
 
 import StatusPills from "./components/StatusPills";
-import MatchList from "./components/MatchList";
 import MatchCard from "./components/MatchCard";
 import Leaderboard from "./components/Leaderboard";
 import AdminPanel from "./components/AdminPanel";
-
-const APP_KEY = "mundial_2026_quiniela_shared_v1";
-const PLAYER_SESSION_KEY = "mundial_2026_player_session";
-
-function emailKey(email) {
-  return normalize(email).slice(0, 160);
-}
-
-function validEmail(email) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-}
+import AuthForm from "./components/AuthForm";
+import UserProfile from "./components/UserProfile";
 
 function AppContent() {
   const { t, lang, toggleLang } = useTranslation();
+  const { token, user, loading: authLoading, login, register, logout, isAuthenticated } = useAuth();
 
   // App state
   const [state, setState] = useState({
@@ -34,104 +25,115 @@ function AppContent() {
   });
 
   const [storageMode, setStorageMode] = useState("checking");
-  const [currentTab, setCurrentTab] = useState("picks"); // 'picks' | 'results'
+  const [currentTab, setCurrentTab] = useState("picks");
   const [theme, setTheme] = useState(
     () => localStorage.getItem("quiniela_theme") || "light",
   );
 
-  // Admin session state
   const [adminLoggedIn, setAdminLoggedIn] = useState(
     () => sessionStorage.getItem("mundial_2026_admin_session") === "true",
   );
   const [adminPanelOpen, setAdminPanelOpen] = useState(false);
   const [adminModalOpen, setAdminModalOpen] = useState(false);
 
-  // Active Player session
-  const [currentPlayer, setCurrentPlayer] = useLocalStorage(
-    PLAYER_SESSION_KEY,
-    null,
-  );
-
-  // Player picks state for form edits
   const [playerPicks, setPlayerPicks] = useState({});
-
-  // Form input states
-  const [formValues, setFormValues] = useState({ name: "", email: "" });
+  const [leaderboard, setLeaderboard] = useState([]);
 
   // Status message states
   const [formMsg, setFormMsg] = useState({ text: "", type: "" });
   const [apiMsg, setApiMsg] = useState({ text: "", type: "" });
   const [adminMsg, setAdminMsg] = useState({ text: "", type: "" });
 
+  // Load leaderboard
+  useEffect(() => {
+    async function loadLeaderboard() {
+      try {
+        const data = await apiService.getLeaderboard();
+        setLeaderboard(data);
+      } catch (error) {
+        console.error("Error loading leaderboard:", error);
+      }
+    }
+    loadLeaderboard();
+  }, [state.players]);
+
+
+
+  // Load initial state from API
+  useEffect(() => {
+    if (!isAuthenticated || !token) return;
+
+    async function loadInitialState() {
+      try {
+        const [playersData, matchesData] = await Promise.all([
+          apiService.getPlayers(token).catch(() => []),
+          apiService.getMatches(token).catch(() => [])
+        ]);
+
+        const playersObj = {};
+        for (const player of playersData) {
+          const predictions = await apiService.getPredictions(player.id, token).catch(() => ({ predictions: {} }));
+          playersObj[player.id] = {
+            id: player.id,
+            name: player.name,
+            email: player.email,
+            picks: predictions.predictions || {},
+            joinedAt: player.joinedAt,
+            updatedAt: player.updatedAt
+          };
+        }
+
+        const resultsObj = {};
+        for (const match of matchesData) {
+          if (match.result) {
+            resultsObj[match.id] = match.result;
+          }
+        }
+
+        setState({
+          players: playersObj,
+          results: resultsObj,
+          updatedAt: new Date().toISOString()
+        });
+        setStorageMode("api");
+      } catch (error) {
+        console.error("Error loading initial state:", error);
+        setStorageMode("error");
+      }
+    }
+    loadInitialState();
+  }, [isAuthenticated, token]);
+
+  // Sync loop polling from API
+  useEffect(() => {
+    if (!isAuthenticated || !token) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const matchesData = await apiService.getMatches(token);
+        const resultsObj = {};
+        for (const match of matchesData) {
+          if (match.result) {
+            resultsObj[match.id] = match.result;
+          }
+        }
+        setState((current) => ({
+          ...current,
+          results: resultsObj,
+          updatedAt: new Date().toISOString()
+        }));
+      } catch (err) {
+        console.debug("Sync loop failed", err);
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [isAuthenticated, token]);
+
   // Theme effect
   useEffect(() => {
     localStorage.setItem("quiniela_theme", theme);
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
-
-
-
-  // Load initial state
-  useEffect(() => {
-    async function loadInitialState() {
-      const raw = await storageService.get(APP_KEY);
-      let loadedState = {
-        players: {},
-        results: {},
-        updatedAt: new Date().toISOString(),
-      };
-      if (raw) {
-        try {
-          loadedState = { ...loadedState, ...JSON.parse(raw) };
-        } catch (error) {
-          console.warn("Stored data could not be parsed", error);
-        }
-      }
-      const mode = await storageService.set(
-        APP_KEY,
-        JSON.stringify(loadedState),
-      );
-      setState(loadedState);
-      setStorageMode(mode);
-    }
-    loadInitialState();
-  }, []);
-
-  // Sync loop polling
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      const raw = await storageService.get(APP_KEY);
-      if (raw) {
-        try {
-          const incoming = JSON.parse(raw);
-          setState((current) => {
-            if (
-              incoming.updatedAt &&
-              incoming.updatedAt !== current.updatedAt
-            ) {
-              return { ...current, ...incoming };
-            }
-            return current;
-          });
-        } catch (err) {
-          console.debug("Sync loop state parse failed", err);
-        }
-      }
-    }, 5000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Sync player picks when player session or global players state changes
-  useEffect(() => {
-    const picks =
-      currentPlayer?.id && state.players[currentPlayer.id]
-        ? state.players[currentPlayer.id].picks || {}
-        : {};
-    const timer = setTimeout(() => {
-      setPlayerPicks(picks);
-    }, 0);
-    return () => clearTimeout(timer);
-  }, [currentPlayer, state.players]);
 
   const handleToggleTheme = () => {
     setTheme((prev) => (prev === "dark" ? "light" : "dark"));
@@ -145,13 +147,6 @@ function AppContent() {
     }
   };
 
-  const handleLogoutPlayer = () => {
-    setCurrentPlayer(null);
-    setPlayerPicks({});
-    setFormValues({ name: "", email: "" });
-    setFormMsg({ text: "", type: "" });
-  };
-
   const handlePickChange = (matchId, newPick) => {
     setPlayerPicks((prev) => ({
       ...prev,
@@ -160,19 +155,6 @@ function AppContent() {
   };
 
   const handleSubmitPicks = async () => {
-    const name = formValues.name.trim();
-    const email = formValues.email.trim().toLowerCase();
-
-    const isNewSession = !currentPlayer;
-    const playerKey = emailKey(email);
-
-    if (isNewSession) {
-      if (!name || !validEmail(email)) {
-        setFormMsg({ text: t("needNameEmail"), type: "err" });
-        return;
-      }
-    }
-
     // Validate picks
     const completedPicks = {};
     for (const match of matches) {
@@ -200,39 +182,33 @@ function AppContent() {
       }
     }
 
-    const key = currentPlayer ? currentPlayer.id : playerKey;
-    const targetEmail = currentPlayer ? currentPlayer.email : email;
-    const targetName = currentPlayer ? currentPlayer.name : name;
+    try {
+      // Save predictions for current user
+      await apiService.savePredictions(user.id, completedPicks, token);
 
-    const updatedPlayers = {
-      ...state.players,
-      [key]: {
-        id: key,
-        name: targetName,
-        email: targetEmail,
-        picks: completedPicks,
-        joinedAt: state.players[key]?.joinedAt || new Date().toISOString(),
+      // Update local state
+      const updatedPlayers = {
+        ...state.players,
+        [user.id]: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          picks: completedPicks,
+          joinedAt: state.players[user.id]?.joinedAt || new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      };
+      setState({
+        ...state,
+        players: updatedPlayers,
         updatedAt: new Date().toISOString(),
-      },
-    };
+      });
 
-    const newState = {
-      ...state,
-      players: updatedPlayers,
-      updatedAt: new Date().toISOString(),
-    };
-
-    setState(newState);
-
-    setCurrentPlayer({
-      id: key,
-      name: targetName,
-      email: targetEmail,
-    });
-
-    const mode = await storageService.set(APP_KEY, JSON.stringify(newState));
-    setStorageMode(mode);
-    setFormMsg({ text: t("saveOk"), type: "ok" });
+      setFormMsg({ text: t("saveOk"), type: "ok" });
+    } catch (error) {
+      console.error(error);
+      setFormMsg({ text: "Error al guardar predicciones", type: "err" });
+    }
   };
 
   const handleFetchApiResults = async () => {
@@ -251,8 +227,19 @@ function AppContent() {
       };
 
       setState(newState);
-      const mode = await storageService.set(APP_KEY, JSON.stringify(newState));
-      setStorageMode(mode);
+
+      // Save to backend
+      for (const [matchId, result] of Object.entries(newResults)) {
+        if (result && (result.homeScore !== undefined && result.awayScore !== undefined)) {
+          await apiService.saveMatchResult(
+            matchId,
+            result.homeScore,
+            result.awayScore,
+            result.winner,
+            token
+          );
+        }
+      }
 
       setApiMsg({
         text: updatedCount ? t("apiDone") : t("apiNone"),
@@ -265,29 +252,87 @@ function AppContent() {
   };
 
   const handleSaveResults = async (updatedResults) => {
-    const newState = {
-      ...state,
-      results: updatedResults,
-      updatedAt: new Date().toISOString(),
-    };
-    setState(newState);
-    const mode = await storageService.set(APP_KEY, JSON.stringify(newState));
-    setStorageMode(mode);
-    setAdminMsg({ text: t("adminSaved"), type: "ok" });
+    try {
+      // Save each match result to API
+      for (const [matchId, result] of Object.entries(updatedResults)) {
+        if (result && (result.homeScore !== undefined && result.awayScore !== undefined)) {
+          await apiService.saveMatchResult(
+            matchId,
+            result.homeScore,
+            result.awayScore,
+            result.winner,
+            token
+          );
+        }
+      }
+
+      const newState = {
+        ...state,
+        results: updatedResults,
+        updatedAt: new Date().toISOString(),
+      };
+      setState(newState);
+      setAdminMsg({ text: t("adminSaved"), type: "ok" });
+    } catch (error) {
+      console.error(error);
+      setAdminMsg({ text: "Error al guardar resultados", type: "err" });
+    }
   };
 
   const handleClearData = async () => {
-    localStorage.removeItem(APP_KEY);
+    // Clear local state (data remains on server)
     const newState = {
       players: {},
       results: {},
       updatedAt: new Date().toISOString(),
     };
     setState(newState);
-    const mode = await storageService.set(APP_KEY, JSON.stringify(newState));
-    setStorageMode(mode);
+    setPlayerPicks({});
     setAdminMsg({ text: t("localCleared"), type: "ok" });
   };
+
+  if (!isAuthenticated) {
+    return (
+      <main className="app" data-theme={theme}>
+        <section className="hero">
+          <div className="topbar">
+            <div className="brand">
+              <div className="logo" aria-hidden="true">
+                <span></span>
+              </div>
+              <div className="brand-text">
+                <strong>Mundial 2026</strong>
+                <small>{t("brandSub")}</small>
+              </div>
+            </div>
+            <div className="controls">
+              <button className="icon-btn" type="button" onClick={handleToggleTheme}>
+                {theme === "dark" ? t("themeLight") : t("themeBtn")}
+              </button>
+            </div>
+          </div>
+          <div className="hero-content">
+            <h1>{t("title")}</h1>
+            <p className="hero-copy">{t("heroCopy")}</p>
+          </div>
+        </section>
+        <section className="grid">
+          <div className="panel">
+            <AuthForm
+              onAuthSuccess={async (data) => {
+                if (data.isLogin) {
+                  await login(data.email, data.password, apiService);
+                } else {
+                  await register(data.name, data.email, data.password, apiService);
+                }
+              }}
+              isLoading={authLoading}
+            />
+          </div>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="app" data-theme={theme}>
@@ -370,18 +415,39 @@ function AppContent() {
           </div>
 
           {currentTab === "picks" ? (
-            <MatchList
-              matches={matches}
-              results={state.results}
-              picks={playerPicks}
-              onChangePick={handlePickChange}
-              currentPlayer={currentPlayer}
-              formValues={formValues}
-              setFormValues={setFormValues}
-              onLogout={handleLogoutPlayer}
-              onSubmitPicks={handleSubmitPicks}
-              formMsg={formMsg}
-            />
+            <>
+              <UserProfile user={user} onLogout={logout} />
+              <div className="match-list" id="matchList" style={{ marginTop: "16px" }}>
+                {matches.map((match) => (
+                  <MatchCard
+                    key={match.id}
+                    match={match}
+                    result={state.results[match.id]}
+                    pick={playerPicks[match.id]}
+                    onChangePick={handlePickChange}
+                    viewMode="picks"
+                  />
+                ))}
+              </div>
+              <div className="submit-row">
+                <button
+                  className="primary"
+                  id="submitBtn"
+                  type="button"
+                  onClick={handleSubmitPicks}
+                >
+                  {t("submitBtn")}
+                </button>
+                {formMsg?.text && (
+                  <span
+                    className={`msg ${formMsg.type === "ok" ? "ok" : "err"}`}
+                    id="formMsg"
+                  >
+                    {formMsg.text}
+                  </span>
+                )}
+              </div>
+            </>
           ) : (
             <div className="panel-body" id="resultsView">
               <div className="match-list" id="resultsList">
@@ -416,6 +482,7 @@ function AppContent() {
         </div>
 
         <Leaderboard
+          leaderboard={leaderboard}
           players={state.players}
           matches={matches}
           results={state.results}
