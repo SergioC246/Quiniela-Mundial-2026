@@ -1,0 +1,35 @@
+services:
+  # ── Backend: Node.js API ────────────────────────────────────────────────────
+  - type: web
+    name: quiniela-mundial-2026-api
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: node src/server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: REFRESH_SECRET
+        generateValue: true
+    disk:
+      name: quiniela-data
+      mountPath: /data
+      sizeGB: 1
+
+  # ── Frontend: Vite React ────────────────────────────────────────────────────
+  - type: web
+    name: quiniela-mundial-2026
+    runtime: static
+    rootDir: .
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: no-cache
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
